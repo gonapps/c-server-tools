@@ -1,0 +1,422 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Facil.io - The easy C IO library by boazsegev</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/github-light.css">
+    <script src="javascripts/scale.fix.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1 class="header">Facil.io - The easy C IO library</h1>
+        <p class="header">Write network services in C: Thread-Pools, epoll/kqueue reactor, dynamic protocol server (object oriented)... and more</p>
+
+        <ul>
+          <li class="download"><a class="buttons" href="https://github.com/boazsegev/c-server-tools/zipball/master">Download ZIP</a></li>
+          <li class="download"><a class="buttons" href="https://github.com/boazsegev/c-server-tools/tarball/master">Download TAR</a></li>
+          <li><a class="buttons github" href="https://github.com/boazsegev/c-server-tools">View On GitHub</a></li>
+        </ul>
+
+        <p class="header">This project is maintained by <a class="header name" href="https://github.com/boazsegev">boazsegev</a></p>
+
+
+      </header>
+      <section>
+        <h1>
+<a id="facilio---the-easy-c-io-library" class="anchor" href="#facilio---the-easy-c-io-library" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Facil.io - The easy C IO library</h1>
+
+<p>Writing servers in C is repetitive and often involves copying a the code from <a href="http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html">Beej's guide</a> and making a mess of things along the way.</p>
+
+<p>Here you will find tools to write HTTP, Websockets and custom network applications with ease and speed, using a comfortable framework for writing network services in C.</p>
+
+<p>All the libraries here are provided as source code. Although the more complex libraries (i.e. <code>lib-server</code> and it's extensions) require the smaller libraries (i.e. the thread-pool library <code>libasync</code>, the socket library <code>libsock</code> or the reactor core <code>libreact</code>), the smaller libraries can be used independently.</p>
+
+<p><strong>Writing HTTP and Websocket services in C? Easy!</strong></p>
+
+<p>Websockets and HTTP are super common, so <code>libserver</code> comes with HTTP and Websocket extensions, allowing us to easily write HTTP and Websocket services.</p>
+
+<p>The framework's code is heavily documented and you can use Doxygen to create automated documentation for the API.</p>
+
+<div class="highlight highlight-source-c"><pre><span class="pl-c">// update the demo.c file to use the existing folder structure and makefile</span>
+#<span class="pl-k">include</span> <span class="pl-s"><span class="pl-pds">"</span>websockets.h<span class="pl-pds">"</span></span>  <span class="pl-c">// includes the "http.h" header</span>
+
+#<span class="pl-k">include</span> <span class="pl-s"><span class="pl-pds">&lt;</span>stdio.h<span class="pl-pds">&gt;</span></span>
+#<span class="pl-k">include</span> <span class="pl-s"><span class="pl-pds">&lt;</span>stdlib.h<span class="pl-pds">&gt;</span></span>
+
+<span class="pl-c">/* ******************************</span>
+<span class="pl-c">The Websocket echo implementation</span>
+<span class="pl-c">*/</span>
+
+<span class="pl-k">void</span> <span class="pl-en">ws_open</span>(ws_s* ws) {
+  <span class="pl-c1">fprintf</span>(stderr, <span class="pl-s"><span class="pl-pds">"</span>Opened a new websocket connection (<span class="pl-c1">%p</span>)<span class="pl-cce">\n</span><span class="pl-pds">"</span></span>, ws);
+}
+
+<span class="pl-k">void</span> <span class="pl-en">ws_echo</span>(ws_s* ws, <span class="pl-k">char</span>* data, <span class="pl-c1">size_t</span> size, <span class="pl-c1">uint8_t</span> is_text) {
+  <span class="pl-c">// echos the data to the current websocket</span>
+  <span class="pl-c1">websocket_write</span>(ws, data, size, <span class="pl-c1">1</span>);
+}
+
+<span class="pl-k">void</span> <span class="pl-en">ws_shutdown</span>(ws_s* ws) {
+  <span class="pl-c1">websocket_write</span>(ws, <span class="pl-s"><span class="pl-pds">"</span>Shutting Down<span class="pl-pds">"</span></span>, <span class="pl-c1">13</span>, <span class="pl-c1">1</span>);
+}
+
+<span class="pl-k">void</span> <span class="pl-en">ws_close</span>(ws_s* ws) {
+  <span class="pl-c1">fprintf</span>(stderr, <span class="pl-s"><span class="pl-pds">"</span>Closed websocket connection (<span class="pl-c1">%p</span>)<span class="pl-cce">\n</span><span class="pl-pds">"</span></span>, ws);
+}
+
+<span class="pl-c">/* ***********************************</span>
+<span class="pl-c">The Websocket Broadcast implementation</span>
+<span class="pl-c">*/</span>
+
+<span class="pl-c">/* websocket broadcast data */</span>
+<span class="pl-k">struct</span> ws_data {
+  <span class="pl-c1">size_t</span> size;
+  <span class="pl-k">char</span> data[];
+};
+<span class="pl-c">/* free the websocket broadcast data */</span>
+<span class="pl-k">void</span> <span class="pl-en">free_wsdata</span>(ws_s* ws, <span class="pl-k">void</span>* arg) {
+  <span class="pl-c1">free</span>(arg);
+}
+<span class="pl-c">/* the broadcast "task" performed by websocket_each */</span>
+<span class="pl-k">void</span> <span class="pl-en">ws_get_broadcast</span>(ws_s* ws, <span class="pl-k">void</span>* arg) {
+  <span class="pl-k">struct</span> ws_data* data = arg;
+  <span class="pl-c1">websocket_write</span>(ws, data-&gt;data, data-&gt;size, <span class="pl-c1">1</span>);  <span class="pl-c">// echo</span>
+}
+<span class="pl-c">/* The websocket broadcast server's on_message callback */</span>
+
+<span class="pl-k">void</span> <span class="pl-en">ws_broadcast</span>(ws_s* ws, <span class="pl-k">char</span>* data, <span class="pl-c1">size_t</span> size, <span class="pl-c1">uint8_t</span> is_text) {
+  <span class="pl-c">// Copy the message to a broadcast data-packet</span>
+  <span class="pl-k">struct</span> ws_data* msg = <span class="pl-c1">malloc</span>(<span class="pl-k">sizeof</span>(* msg) + size);
+  msg-&gt;size = size;
+  <span class="pl-c1">memcpy</span>(msg-&gt;data, data, size);
+  <span class="pl-c">// Asynchronously calls `ws_get_broadcast` for each of the websockets</span>
+  <span class="pl-c">// (except this one)</span>
+  <span class="pl-c">// and calls `free_wsdata` once all the broadcasts were perfomed.</span>
+  <span class="pl-c1">websocket_each</span>(ws, ws_get_broadcast, msg, free_wsdata);
+  <span class="pl-c">// echos the data to the current websocket</span>
+  <span class="pl-c1">websocket_write</span>(ws, data, size, <span class="pl-c1">1</span>);
+}
+
+<span class="pl-c">/* ********************</span>
+<span class="pl-c">The HTTP implementation</span>
+<span class="pl-c">*/</span>
+
+<span class="pl-k">void</span> <span class="pl-en">on_request</span>(http_request_s* request) {
+  <span class="pl-c">// to log we will start a response.</span>
+  http_response_s response = <span class="pl-c1">http_response_init</span>(request);
+  <span class="pl-c1">http_response_log_start</span>(&amp;response);
+  <span class="pl-c">// upgrade requests to broadcast will have the following properties:</span>
+  <span class="pl-k">if</span> (request-&gt;upgrade &amp;&amp; !<span class="pl-c1">strcmp</span>(request-&gt;path, <span class="pl-s"><span class="pl-pds">"</span>/broadcast<span class="pl-pds">"</span></span>)) {
+    <span class="pl-c">// Websocket upgrade will use our existing response (never leak responses).</span>
+    <span class="pl-c1">websocket_upgrade</span>(.<span class="pl-smi">request</span> = request, .<span class="pl-smi">on_message</span> = ws_broadcast,
+                      .<span class="pl-smi">on_open</span> = ws_open, .<span class="pl-smi">on_close</span> = ws_close,
+                      .<span class="pl-smi">on_shutdown</span> = ws_shutdown, .<span class="pl-smi">response</span> = &amp;response);
+
+    <span class="pl-k">return</span>;
+  }
+  <span class="pl-c">// other upgrade requests will have the following properties:</span>
+  <span class="pl-k">if</span> (request-&gt;upgrade) {
+    <span class="pl-c1">websocket_upgrade</span>(.<span class="pl-smi">request</span> = request, .<span class="pl-smi">on_message</span> = ws_echo,
+                      .<span class="pl-smi">on_open</span> = ws_open, .<span class="pl-smi">on_close</span> = ws_close, .<span class="pl-smi">timeout</span> = <span class="pl-c1">4</span>,
+                      .<span class="pl-smi">on_shutdown</span> = ws_shutdown, .<span class="pl-smi">response</span> = &amp;response);
+    <span class="pl-k">return</span>;
+  }
+  <span class="pl-c">// HTTP response</span>
+  <span class="pl-c1">http_response_write_body</span>(&amp;response, <span class="pl-s"><span class="pl-pds">"</span>Hello World!<span class="pl-pds">"</span></span>, <span class="pl-c1">12</span>);
+  <span class="pl-c1">http_response_finish</span>(&amp;response);
+}
+
+<span class="pl-c">/****************</span>
+<span class="pl-c">The main function</span>
+<span class="pl-c">*/</span>
+
+#<span class="pl-k">define</span> <span class="pl-en">THREAD_COUNT</span> <span class="pl-c1">0</span>
+<span class="pl-k">int</span> <span class="pl-en">main</span>(<span class="pl-k">int</span> argc, <span class="pl-k">char</span> <span class="pl-k">const</span>* argv[]) {
+  <span class="pl-k">const</span> <span class="pl-k">char</span>* public_folder = <span class="pl-c1">NULL</span>;
+  <span class="pl-c1">http1_listen</span>(<span class="pl-s"><span class="pl-pds">"</span>3000<span class="pl-pds">"</span></span>, <span class="pl-c1">NULL</span>, .<span class="pl-smi">on_request</span> = on_request,
+               .<span class="pl-smi">public_folder</span> = public_folder, .<span class="pl-smi">log_static</span> = <span class="pl-c1">1</span>);
+  <span class="pl-c1">server_run</span>(.<span class="pl-smi">threads</span> = THREAD_COUNT);
+  <span class="pl-k">return</span> <span class="pl-c1">0</span>;
+}</pre></div>
+
+<p><strong>SSL/TLS?</strong> - possible, but you'll have to write it in.</p>
+
+<p>Since most web applications (Node.js, Ruby etc') end up running behind load balancers and proxies, it is often that the SSL layer is handled by intermediaries.</p>
+
+<p>But, if you need to expose the application directly to the web, it is possible to implement SSL/TLS support using <code>libsock</code>'s read/write hooks.</p>
+
+<p>Since <code>libserver</code> utilizes <code>libsock</code> for socket communication (leveraging it's user-land buffer and other features), any RW hooks assigned be utilized for the specified connection.</p>
+
+<p>Using <code>libsock</code>'s read-write hooks (<code>sock_rw_hook_set</code>) allows us to use an underlaying TLS/SSL library to send data securely. Use <code>sock_uuid2fd</code> to convert a connection's UUID to it's system assigned <code>fd</code>.</p>
+
+<p>I did not write a TLS implementation since I'm still looking into OpenSSL alternatives (which has a difficult API and I fear for it's thread safety as far as concurrency goes) and since it isn't a priority for many use-cases (such as fast micro-services running behind a load-balancer/proxy that manages the SSL/TLS layer).</p>
+
+<hr>
+
+<h2>
+<a id="background-information" class="anchor" href="#background-information" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Background information</h2>
+
+<p>After years in <a href="https://www.ruby-lang.org/en/">Ruby land</a> I decided to learn <a href="https://www.rust-lang.org">Rust</a>, only to re-discover that I actually quite enjoy writing in C and that C's reputation as "unsafe" or "hard" is undeserved and hides C's power.</p>
+
+<p>So I decided to brush up my C programming skills... like an old man tinkering with his childhood tube box (an old radio, for you youngsters), I tend to come back to the question of web servers, the reactor pattern and evented programming.</p>
+
+<p>Anyway, Along the way I wrote:</p>
+
+<h2>
+<a id="libasync---a-native-posix-pthread-thread-pool" class="anchor" href="#libasync---a-native-posix-pthread-thread-pool" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a><a href="docs/libasync.md"><code>libasync</code></a> - A native POSIX (<code>pthread</code>) thread pool.</h2>
+
+<p><code>libasync</code> is a simple thread pool that uses POSIX threads (and could be easily ported).</p>
+
+<p>It uses a combination of a pipe (for wakeup signals) and mutexes (for managing the task queue). I found it more performant then using conditional variables and more portable then using signals (which required more control over the process then an external library should require).</p>
+
+<p><code>libasync</code> threads can be guarded by "sentinel" threads (it's a simple flag to be set prior to compiling the library's code), so that segmentation faults and errors in any given task won't break the system apart.</p>
+
+<p>This was meant to give a basic layer of protection to any server implementation, but I would recommend that it be removed for any other uses (it's a matter or changing the definition of <code>ASYNC_USE_SENTINEL</code> in <code>libasync.c</code>).</p>
+
+<p>Using <code>libasync</code> is super simple and would look something like this:</p>
+
+<div class="highlight highlight-source-c"><pre>#<span class="pl-k">include</span> <span class="pl-s"><span class="pl-pds">"</span>libasync.h<span class="pl-pds">"</span></span>
+#<span class="pl-k">include</span> <span class="pl-s"><span class="pl-pds">&lt;</span>stdio.h<span class="pl-pds">&gt;</span></span>
+#<span class="pl-k">include</span> <span class="pl-s"><span class="pl-pds">&lt;</span>pthread.h<span class="pl-pds">&gt;</span></span>
+
+<span class="pl-c">// an example task</span>
+<span class="pl-k">void</span> <span class="pl-en">say_hi</span>(<span class="pl-k">void</span>* arg) {
+ <span class="pl-c1">printf</span>(<span class="pl-s"><span class="pl-pds">"</span>Hi from thread <span class="pl-c1">%p</span>!<span class="pl-cce">\n</span><span class="pl-pds">"</span></span>, <span class="pl-c1">pthread_self</span>());
+}
+
+<span class="pl-c">// an example usage</span>
+<span class="pl-k">int</span> <span class="pl-en">main</span>(<span class="pl-k">void</span>) {
+ <span class="pl-c">// create the thread pool with 8 threads.</span>
+ <span class="pl-c1">async_start</span>(<span class="pl-c1">8</span>);
+ <span class="pl-c">// send a task</span>
+ <span class="pl-c1">async_run</span>(say_hi, <span class="pl-c1">NULL</span>);
+ <span class="pl-c">// wait for all tasks to finish, closing the threads, clearing the memory.</span>
+ <span class="pl-c1">async_finish</span>();
+}</pre></div>
+
+<p>To use this library you only need the <code>libasync.h</code> and <code>libasync.c</code> files.</p>
+
+<h2>
+<a id="libreact---kqueueepoll-abstraction" class="anchor" href="#libreact---kqueueepoll-abstraction" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a><a href="docs/libreact.md"><code>libreact</code></a> - KQueue/EPoll abstraction.</h2>
+
+<p>It's true, some server programs still use <code>select</code> and <code>poll</code>... but they really shouldn't be (don't get me started).</p>
+
+<p>When using <a href="http://libevent.org"><code>libevent</code></a> or <a href="http://software.schmorp.de/pkg/libev.html"><code>libev</code></a> you could end up falling back on <code>select</code> if you're not careful. <code>libreact</code>, on the other hand, will simply refuse to compile if neither kqueue nor epoll are available...</p>
+
+<p>I should note that this means that Solaris and Windows support is currently absent, as Solaris's <code>evpoll</code> library has significantly different design requirements (each IO needs to re-register after it's events are handled) and Windows is a different beast altogether. This difference makes the abstraction sharing (API) difficult and ineffective.</p>
+
+<p>Since I mentioned <code>libevent</code> and <code>libev</code>, I should point out that even a simple inspection shows that these are amazing and well tested libraries (how did they make those nice benchmark graphs?!)... but I hated their API (or documentation).</p>
+
+<p>It seems to me, that since both <code>libevent</code> and <code>libev</code> are so all-encompassing, they end up having too many options and functions... I, on the other hand, am a fan of well designed abstractions, even at the price of control. I mean, you're writing a server that should handle 100K+ (or 1M+) concurrent connections - do you really need to manage the socket polling timeouts ("ticks")?! Are you really expecting more than a second to pass with no events?</p>
+
+<p>To use this library you only need the <code>libreact.h</code> and <code>libreact.c</code> files.</p>
+
+<h2>
+<a id="libsock---non-blocking-socket-abstraction-with-lib-react-support" class="anchor" href="#libsock---non-blocking-socket-abstraction-with-lib-react-support" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a><a href="docs/libsock.md"><code>libsock</code></a> - Non-Blocking socket abstraction with <code>lib-react</code> support.</h2>
+
+<p>Non-Blocking sockets have a lot of common code that needs to be handled, such as a user level buffer (for all the data that didn't get sent when the socket was busy), delayed disconnection (don't close before sending all the data), file descriptor collision protection (preventing data intended for an old client from being sent to a new client) etc'.</p>
+
+<p>Read through this library's documentation to learn more about using this thread-safe library that provides user level writing buffer and seamless integration with <code>libreact</code>.</p>
+
+<h2>
+<a id="libserver---a-server-building-library" class="anchor" href="#libserver---a-server-building-library" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a><a href="docs/libserver.md"><code>libserver</code></a> - a server building library.</h2>
+
+<p>Writing server code is fun... but in limited and controlled amounts... after all, much of it is simple code being repeated endlessly, connecting one piece of code with a different piece of code.</p>
+
+<p><code>libserver</code> is aimed at writing unix based (linux/BSD) servers application (network services), such as web applications. It uses <code>libreact</code> as the reactor, <code>libasync</code> to handle tasks and <code>libbuffer</code> for a user lever network buffer and writing data asynchronously.</p>
+
+<p><code>libserver</code> was designed to strike a good performance balance (memory, speed etc') while maintaining security (<code>fd</code> collision protection etc'). system calls that might not work on some OS versions were disabled (you can enable <code>sendfile</code> for mac using a single flag in <code>libsock.c</code>) and the thread pool, which has no consumer producer distinction, uses <code>nanosleep</code> instead of semaphores or mutexes (this actually performs better).</p>
+
+<p>Many of these can be changed using a simple flag and the code should be commented enough for any required changes to be easily manageable. To offer some comparison, last time I counted, <code>ev.c</code> from <code>libev</code> had ~5000 lines, while <code>libreact</code> was less then 700 lines (~280 lines of actual code, everything else is comments).</p>
+
+<p>Using <code>libserver</code> is super simple.</p>
+
+<p>It's based on Protocol structure and callbacks, allowing for many different listening sockets and network services (protocols) to be active concurrently. We can easily and dynamically change protocols mid-stream, supporting stuff like HTTP upgrade requests (i.e. switching from HTTP to Websockets).</p>
+
+<p>There was a simple echo server example at the beginning of this README.</p>
+
+<p>Using this library requires all the minor libraries written to support it: <code>libasync</code>, <code>libsock</code> and <code>libreact</code>. This means you will need all the <code>.h</code> and <code>.c</code> files except the HTTP related files. <code>minicrypt</code> isn't required (nor did I finish writing it).</p>
+
+<h3>
+<a id="a-word-about-concurrency" class="anchor" href="#a-word-about-concurrency" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>A word about concurrency</h3>
+
+<p>It should be notes that network applications always have to keep concurrency in mind. For instance, the connection might be closed by one machine while the other is still preparing (or writing) it's response.</p>
+
+<p>Worst, while the response is being prepared, a new client might connect to the system with the newly available (same) file descriptor, so the finalized response might get sent to the wrong client!</p>
+
+<p><code>libsock</code> and <code>libserver</code> protect us from such scenarios.</p>
+
+<p>If you will use <code>libserver</code>'s multi-threading mode, it's concurrency will be limited to the <code>on_ready</code>, <code>ping</code> and <code>on_shutdown</code> callbacks. These callbacks should avoid using/setting any protocol specific information, or collisions might ensue.</p>
+
+<p>All other callbacks (<code>on_data</code>, <code>on_close</code> and any server tasks initiated with <code>server_each</code> or <code>server_task</code>) will be performed sequentially for each connection, protecting a connection's data from corruption. While two concurrent connections might perform tasks at the same time, no single connection will perform more then one task at a time (unless you ask it to do su, using <code>async_run</code>).</p>
+
+<p>In addition to multi-threading, <code>libserver</code> allows us to easily setup the network service's concurrency using processes (<code>fork</code>ing), which act differently then threads (i.e. memory space isn't shared, so that processes don't share accepted connections).</p>
+
+<p>For best results, assume everything could run concurrently. <code>libserver</code> will do it's best to prevent collisions, but it is a generic library, so it might not know what to expect from your application.</p>
+
+<h2>
+<a id="http---a-protocol-for-the-web" class="anchor" href="#http---a-protocol-for-the-web" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a><a href="docs/http.md"><code>http</code></a> - a protocol for the web</h2>
+
+<p>All these libraries are used in a Ruby server I'm re-writing, which has native Websocket support (<a href="https://github.com/boazsegev/iodine">Iodine</a>) - but since the HTTP protocol layer doesn't enter "Ruby-land" before the request parsing is complete, I ended up writing a light HTTP parser in C, and attaching it to the <code>libserver</code>'s protocol specs.</p>
+
+<p>The code is just a few helper settings and mega-functions (I know, refactoring will make it easier to maintain). The HTTP parser destructively edits the received headers and forwards a <code>http_request_s *</code> object to the <code>on_request</code> callback. This minimizes data copying and speeds up the process.</p>
+
+<p>The HTTP protocol provides a built-in static file service and allows us to limit incoming request data sizes in order to protect server resources. The header size limit adjustable, but will be hardcoded during compilation (it's set to 8KB, which is also the limit on some proxies and intermediaries), securing the server from bloated header data DoS attacks. The incoming data size limit is dynamic.</p>
+
+<p>Here's a "Hello World" HTTP server (with a stub to add static file services).</p>
+
+<div class="highlight highlight-source-c"><pre><span class="pl-c">// update the demo.c file to use the existing folder structure and makefile</span>
+#<span class="pl-k">include</span> <span class="pl-s"><span class="pl-pds">"</span>http.h<span class="pl-pds">"</span></span>
+
+<span class="pl-k">void</span> <span class="pl-en">on_request</span>(http_request_s* request) {
+  http_response_s response = <span class="pl-c1">http_response_init</span>(request);
+  <span class="pl-c1">http_response_write_header</span>(&amp;response, .<span class="pl-smi">name</span> = <span class="pl-s"><span class="pl-pds">"</span>X-Data<span class="pl-pds">"</span></span>, .<span class="pl-smi">value</span> = <span class="pl-s"><span class="pl-pds">"</span>my data<span class="pl-pds">"</span></span>);
+  <span class="pl-c1">http_response_set_cookie</span>(&amp;response, .<span class="pl-smi">name</span> = <span class="pl-s"><span class="pl-pds">"</span>my_cookie<span class="pl-pds">"</span></span>, .<span class="pl-smi">value</span> = <span class="pl-s"><span class="pl-pds">"</span>data<span class="pl-pds">"</span></span>);
+  <span class="pl-c1">http_response_write_body</span>(&amp;response, <span class="pl-s"><span class="pl-pds">"</span>Hello World!<span class="pl-cce">\r\n</span><span class="pl-pds">"</span></span>, <span class="pl-c1">14</span>);
+  <span class="pl-c1">http_response_finish</span>(&amp;response);
+}
+
+<span class="pl-k">int</span> <span class="pl-en">main</span>() {
+  <span class="pl-k">char</span>* public_folder = <span class="pl-c1">NULL</span>;
+  <span class="pl-c">// listen on port 3000, any available network binding (0.0.0.0)</span>
+  <span class="pl-c1">http1_listen</span>(<span class="pl-s"><span class="pl-pds">"</span>3000<span class="pl-pds">"</span></span>, <span class="pl-c1">NULL</span>, .<span class="pl-smi">on_request</span> = on_request,
+               .<span class="pl-smi">public_folder</span> = public_folder);
+  <span class="pl-c">// start the server</span>
+  <span class="pl-c1">server_run</span>(.<span class="pl-smi">threads</span> = <span class="pl-c1">16</span>);
+}</pre></div>
+
+<p>Using this library requires all the files in the <code>src</code> folder for this repository, including the subfolder <code>http</code>. The <code>http</code> files are in a separate folder and the makefile in this project supports subfolders. You might want to place all the files in the same folder if you use these source files in a different project.</p>
+
+<h2>
+<a id="websocket---for-real-time-web-applications" class="anchor" href="#websocket---for-real-time-web-applications" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a><a href="src/http/websockets.h"><code>Websocket</code></a> - for real-time web applications</h2>
+
+<p>At some point I decided to move all the network logic from my <a href="https://github.com/boazsegev/iodine">Ruby Iodine project</a> to C. This was, in no small part, so I could test my code and debug it with more ease (especially since I still test the network aspect using ad-hock code snippets and benchmarking tools).</p>
+
+<p>This was when the <code>Websockets</code> library was born. It builds off the <code>http</code> server and allows us to either "upgrade" the HTTP protocol to Websockets or continue with an HTTP response.</p>
+
+<p>Building a Websocket server in C just got super easy, here's both a Wesockets echo and a Websockets broadcast example - notice that broadcasting is a resource intensive task, requiring at least O(n) operations, where n == server capacity:</p>
+
+<div class="highlight highlight-source-c"><pre><span class="pl-c">// update the tryme.c file to use the existing folder structure and makefile</span>
+#<span class="pl-k">include</span> <span class="pl-s"><span class="pl-pds">"</span>websockets.h<span class="pl-pds">"</span></span> <span class="pl-c">// includes the "http.h" header</span>
+
+#<span class="pl-k">include</span> <span class="pl-s"><span class="pl-pds">&lt;</span>stdio.h<span class="pl-pds">&gt;</span></span>
+#<span class="pl-k">include</span> <span class="pl-s"><span class="pl-pds">&lt;</span>stdlib.h<span class="pl-pds">&gt;</span></span>
+
+<span class="pl-c">/*****************************</span>
+<span class="pl-c">The Websocket echo implementation</span>
+<span class="pl-c">*/</span>
+
+<span class="pl-k">void</span> <span class="pl-en">ws_open</span>(ws_s* ws) {
+  <span class="pl-c1">fprintf</span>(stderr, <span class="pl-s"><span class="pl-pds">"</span>Opened a new websocket connection (<span class="pl-c1">%p</span>)<span class="pl-cce">\n</span><span class="pl-pds">"</span></span>, ws);
+}
+
+<span class="pl-k">void</span> <span class="pl-en">ws_echo</span>(ws_s* ws, <span class="pl-k">char</span>* data, <span class="pl-c1">size_t</span> size, <span class="pl-k">int</span> is_text) {
+  <span class="pl-c">// echos the data to the current websocket</span>
+  Websocket.<span class="pl-c1">write</span>(ws, data, size, <span class="pl-c1">1</span>);
+}
+
+<span class="pl-k">void</span> <span class="pl-en">ws_shutdown</span>(ws_s* ws) {
+  Websocket.<span class="pl-c1">write</span>(ws, <span class="pl-s"><span class="pl-pds">"</span>Shutting Down<span class="pl-pds">"</span></span>, <span class="pl-c1">13</span>, <span class="pl-c1">1</span>);
+}
+
+<span class="pl-k">void</span> <span class="pl-en">ws_close</span>(ws_s* ws) {
+  <span class="pl-c1">fprintf</span>(stderr, <span class="pl-s"><span class="pl-pds">"</span>Closed websocket connection (<span class="pl-c1">%p</span>)<span class="pl-cce">\n</span><span class="pl-pds">"</span></span>, ws);
+}
+
+<span class="pl-c">/*****************************</span>
+<span class="pl-c">The Websocket Broadcast implementation</span>
+<span class="pl-c">*/</span>
+
+<span class="pl-c">/* websocket broadcast data */</span>
+<span class="pl-k">struct</span> ws_data {
+  <span class="pl-c1">size_t</span> size;
+  <span class="pl-k">char</span> data[];
+};
+<span class="pl-c">/* free the websocket broadcast data */</span>
+<span class="pl-k">void</span> <span class="pl-en">free_wsdata</span>(ws_s* ws, <span class="pl-k">void</span>* arg) {
+  <span class="pl-c1">free</span>(arg);
+}
+<span class="pl-c">/* the broadcast "task" performed by `Websocket.each` */</span>
+<span class="pl-k">void</span> <span class="pl-en">ws_get_broadcast</span>(ws_s* ws, <span class="pl-k">void</span>* arg) {
+  <span class="pl-k">struct</span> ws_data* data = arg;
+  Websocket.<span class="pl-c1">write</span>(ws, data-&gt;data, data-&gt;size, <span class="pl-c1">1</span>);  <span class="pl-c">// echo</span>
+}
+<span class="pl-c">/* The websocket broadcast server's `on_message` callback */</span>
+
+<span class="pl-k">void</span> <span class="pl-en">ws_broadcast</span>(ws_s* ws, <span class="pl-k">char</span>* data, <span class="pl-c1">size_t</span> size, <span class="pl-k">int</span> is_text) {
+  <span class="pl-c">// Copy the message to a broadcast data-packet</span>
+  <span class="pl-k">struct</span> ws_data* msg = <span class="pl-c1">malloc</span>(<span class="pl-k">sizeof</span>(* msg) + size);
+  msg-&gt;size = size;
+  <span class="pl-c1">memcpy</span>(msg-&gt;data, data, size);
+  <span class="pl-c">// Asynchronously calls `ws_get_broadcast` for each of the websockets</span>
+  <span class="pl-c">// (except this one)</span>
+  <span class="pl-c">// and calls `free_wsdata` once all the broadcasts were perfomed.</span>
+  Websocket.<span class="pl-c1">each</span>(ws, ws_get_broadcast, msg, free_wsdata);
+  <span class="pl-c">// echos the data to the current websocket</span>
+  Websocket.<span class="pl-c1">write</span>(ws, data, size, <span class="pl-c1">1</span>);
+}
+
+<span class="pl-c">/*****************************</span>
+<span class="pl-c">The HTTP implementation</span>
+<span class="pl-c">*/</span>
+
+<span class="pl-k">void</span> <span class="pl-en">on_request</span>(<span class="pl-k">struct</span> HttpRequest* request) {
+  <span class="pl-k">if</span> (!<span class="pl-c1">strcmp</span>(request-&gt;path, <span class="pl-s"><span class="pl-pds">"</span>/echo<span class="pl-pds">"</span></span>)) {
+    <span class="pl-c1">websocket_upgrade</span>(.<span class="pl-smi">request</span> = request, .<span class="pl-smi">on_message</span> = ws_echo,
+                      .<span class="pl-smi">on_open</span> = ws_open, .<span class="pl-smi">on_close</span> = ws_close,
+                      .<span class="pl-smi">on_shutdown</span> = ws_shutdown);
+    <span class="pl-k">return</span>;
+  }
+  <span class="pl-k">if</span> (!<span class="pl-c1">strcmp</span>(request-&gt;path, <span class="pl-s"><span class="pl-pds">"</span>/broadcast<span class="pl-pds">"</span></span>)) {
+    <span class="pl-c1">websocket_upgrade</span>(.<span class="pl-smi">request</span> = request, .<span class="pl-smi">on_message</span> = ws_broadcast,
+                      .<span class="pl-smi">on_open</span> = ws_open, .<span class="pl-smi">on_close</span> = ws_close,
+                      .<span class="pl-smi">on_shutdown</span> = ws_shutdown);
+
+    <span class="pl-k">return</span>;
+  }
+  <span class="pl-k">struct</span> HttpResponse* response = HttpResponse.<span class="pl-c1">new</span>(request);
+  HttpResponse.<span class="pl-c1">write_body</span>(response, <span class="pl-s"><span class="pl-pds">"</span>Hello World!<span class="pl-pds">"</span></span>, <span class="pl-c1">12</span>);
+  HttpResponse.<span class="pl-c1">destroy</span>(response);
+}
+
+<span class="pl-c">/*****************************</span>
+<span class="pl-c">The main function</span>
+<span class="pl-c">*/</span>
+
+#<span class="pl-k">define</span> <span class="pl-en">THREAD_COUNT</span> <span class="pl-c1">1</span>
+<span class="pl-k">int</span> <span class="pl-en">main</span>(<span class="pl-k">int</span> argc, <span class="pl-k">char</span> <span class="pl-k">const</span>* argv[]) {
+  <span class="pl-c1">start_http_server</span>(on_request, <span class="pl-c1">NULL</span>, .<span class="pl-smi">threads</span> = THREAD_COUNT);
+  <span class="pl-k">return</span> <span class="pl-c1">0</span>;
+}</pre></div>
+
+<p>The Websockets implementation uses the <code>minicrypt</code> library for the Base64 encoding and SHA-1 hashing that are part of the protocol's handshake. If you're using OpenSSL, you might want to rewrite this part and use the OpenSSL implementation (OpenSSL's implementation should be faster, as it's written in assembly instead of C and more brain-power was invested in optimizing it).</p>
+
+<hr>
+
+<p>That's it for now. I'm still working on these as well as on <code>minicrypt</code> and SSL/TLS support (adding OpenSSL might be easy if you know the OpenSSL framework, but I think their API is terrible and I'm looking into alternatives).</p>
+
+<h2>
+<a id="forking-contributing-and-all-that-jazz" class="anchor" href="#forking-contributing-and-all-that-jazz" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Forking, Contributing and all that Jazz</h2>
+
+<p>Sure, why not. If you can add Solaris or Windows support to <code>libreact</code>, that could mean <code>lib-server</code> would become available for use on these platforms as well (as well as the HTTP protocol implementation and all the niceties).</p>
+
+<p>If you encounter any issues, open an issue (or, even better, a pull request with a fix) - that would be great :-)</p>
+
+<p>If you want to help me write a new SSL/TLS library or have an SSL/TLS solution you can fit into <code>lib-server</code>, hit me up.</p>
+      </section>
+      <footer>
+        <p><small>Hosted on <a href="https://pages.github.com">GitHub Pages</a> using the Dinky theme</small></p>
+      </footer>
+    </div>
+    <!--[if !IE]><script>fixScale(document);</script><![endif]-->
+		
+  </body>
+</html>
